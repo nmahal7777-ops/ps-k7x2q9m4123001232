@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>شاشة الصور</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none;font-family:"Noto Sans Arabic","Segoe UI",Tahoma,sans-serif;color:#fff}
+  .ph{position:absolute;inset:0;background:#000 center/cover no-repeat;opacity:0;transition:opacity 2.5s ease}
+  .ph.on{opacity:1}
+  .shade{position:absolute;inset:0;background:radial-gradient(ellipse at 0% 0%,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 55%)}
+  #box{position:absolute;top:8vh;left:7vw;text-align:left;text-shadow:0 .2vw 1.2vw rgba(0,0,0,.6);transition:top 1s,left 1s}
+  #t{font-size:9vw;font-weight:300;line-height:1}
+  #ap{font-size:2.4vw;margin-right:1vw}
+  #day{font-size:3.2vw;font-weight:700;margin-top:1vw}
+  #date{font-size:2.4vw;margin-top:.6vw}
+  #hij{font-size:1.9vw;margin-top:.4vw;opacity:.8}
+  #pr{display:inline-flex;gap:2.4vw;margin-top:1.8vw;background:rgba(0,0,0,.35);padding:1.2vw 1.8vw;border-radius:1.6vw}
+  .p{text-align:center}.p b{display:block;font-weight:400;font-size:1.5vw;opacity:.8}.p span{display:block;font-size:2vw;margin-top:.4vw}
+  .p.on b,.p.on span{color:#F3D58A;opacity:1;font-weight:700}
+  #next{font-size:1.9vw;font-weight:700;color:#F3D58A;margin-top:1vw;min-height:2.4vw}
+  #empty{position:absolute;inset:0;background:linear-gradient(135deg,#1d2b24,#3c2a3a,#1b2233)}
+</style>
+</head>
+<body>
+<div id="empty"></div>
+<div class="ph" id="a"></div><div class="ph" id="b"></div>
+<div class="shade"></div>
+<div id="box">
+  <div><span id="t"></span><span id="ap"></span></div>
+  <div id="day"></div><div id="date"></div><div id="hij"></div>
+  <div id="pr"></div>
+  <div id="next"></div>
+</div>
+<script>
+// ---------- prayer times (Riyadh, Umm al-Qura: Fajr 18.5 deg, Isha = Maghrib + 90 min, 120 in Ramadan) ----------
+var LAT = 24.7136, LNG = 46.6753, FAJR = 18.5;
+function rad(d){return d*Math.PI/180} function deg(r){return r*180/Math.PI}
+function fix(a,b){a=a-b*Math.floor(a/b);return a<0?a+b:a}
+function julian(y,m,d){if(m<=2){y-=1;m+=12}var A=Math.floor(y/100),B=2-A+Math.floor(A/4);return Math.floor(365.25*(y+4716))+Math.floor(30.6001*(m+1))+d+B-1524.5}
+function sun(jd){var D=jd-2451545,g=fix(357.529+.98560028*D,360),q=fix(280.459+.98564736*D,360),L=fix(q+1.915*Math.sin(rad(g))+.02*Math.sin(rad(2*g)),360),e=23.439-.00000036*D;
+  var RA=deg(Math.atan2(Math.cos(rad(e))*Math.sin(rad(L)),Math.cos(rad(L))))/15;return{decl:deg(Math.asin(Math.sin(rad(e))*Math.sin(rad(L)))),eqt:q/15-fix(RA,24)}}
+function midDay(jd,t){return fix(12-sun(jd+t/24).eqt,24)}
+function angleTime(jd,t,a,before){var d=sun(jd+t/24).decl,n=midDay(jd,t),x=(-Math.sin(rad(a))-Math.sin(rad(d))*Math.sin(rad(LAT)))/(Math.cos(rad(d))*Math.cos(rad(LAT)));
+  x=Math.max(-1,Math.min(1,x));var T=deg(Math.acos(x))/15;return n+(before?-T:T)}
+function asrTime(jd,t){var d=sun(jd+t/24).decl,a=-deg(Math.atan(1/(1+Math.tan(rad(Math.abs(LAT-d))))));return angleTime(jd,t,a,false)}
+function ramadan(){try{return new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{month:'numeric'}).format(new Date())==='9'}catch(e){return false}}
+function prayers(now){
+  var off=-now.getTimezoneOffset()/60, jd=julian(now.getFullYear(),now.getMonth()+1,now.getDate())-LNG/(15*24), t=[5,6,12,13,18,18];
+  for(var i=0;i<2;i++){t=[angleTime(jd,t[0],FAJR,true),angleTime(jd,t[1],.833,true),midDay(jd,t[2]),asrTime(jd,t[3]),angleTime(jd,t[4],.833,false),0]}
+  var ish=ramadan()?120:90, out=[];
+  for(var k=0;k<5;k++){var h=t[k]+off-LNG/15;out.push(((Math.round(h*60)%1440)+1440)%1440)}
+  out.push((out[4]+ish)%1440); return out;   // fajr, sunrise, dhuhr, asr, maghrib, isha (minutes)
+}
+var NAMES=["الفجر","الشروق","الظهر","العصر","المغرب","العشاء"], SHOWN=[0,2,3,4,5];
+function ar(s){return String(s).replace(/[0-9]/g,function(c){return "٠١٢٣٤٥٦٧٨٩"[c]})}
+function hm(m){var h=Math.floor(m/60)%12||12,mm=m%60;return ar(h+":"+(mm<10?"0":"")+mm)}
+
+// ---------- clock + dates + prayer row ----------
+var $=function(i){return document.getElementById(i)};
+function fmt(loc,o){return new Intl.DateTimeFormat(loc,o).format(new Date())}
+function tick(){
+  var now=new Date(), G="ar-SA-u-ca-gregory-nu-arab";
+  $("t").textContent=fmt(G,{hour:"numeric",minute:"2-digit",hour12:true}).replace(/\s*[صم]$/,"");
+  $("ap").textContent=now.getHours()<12?"ص":"م";
+  $("day").textContent=fmt(G,{weekday:"long"});
+  $("date").textContent=fmt(G,{day:"numeric",month:"long",year:"numeric"});
+  try{$("hij").textContent=fmt("ar-SA-u-ca-islamic-umalqura-nu-arab",{day:"numeric",month:"long",year:"numeric"})}catch(e){}
+  var pt=prayers(now), m=now.getHours()*60+now.getMinutes(), nx=0;
+  for(var k=0;k<SHOWN.length;k++){if(pt[SHOWN[k]]>m){nx=k;break}}
+  var html=""; for(k=0;k<SHOWN.length;k++){var i=SHOWN[k];html+='<div class="p'+(k===nx?' on':'')+'"><b>'+NAMES[i]+'</b><span>'+hm(pt[i])+'</span></div>'}
+  $("pr").innerHTML=html;
+  var ni=SHOWN[nx], left=pt[ni]-m; if(left<0)left+=1440;
+  $("next").textContent=left<=20?("المتبقي على "+NAMES[ni]+": "+ar(left)+" د"):"";
+}
+tick(); setInterval(tick,5000);
+
+// ---------- photos (from the PC), new one every 30 s, never the same twice in a row ----------
+var list=[], q=[], front="a";
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),x=a[i];a[i]=a[j];a[j]=x}return a}
+function load(){var x=new XMLHttpRequest();x.open("GET","photos.json?"+Date.now());x.onload=function(){try{list=JSON.parse(x.responseText)}catch(e){list=[]}};x.send()}
+function next(){
+  if(!list.length){setTimeout(next,8000);return}
+  if(!q.length)q=shuffle(list.slice());
+  var src=q.shift(), img=new Image();
+  img.onload=function(){var back=front==="a"?"b":"a";$(back).style.backgroundImage="url('"+src+"')";$(back).className="ph on";$(front).className="ph";front=back;$("empty").style.display="none";
+    $("box").style.top=(7+Math.random()*3)+"vh";$("box").style.left=(6+Math.random()*3)+"vw";};
+  img.src=src; setTimeout(next,30000);
+}
+load(); setInterval(load,10*60*1000); setTimeout(next,1500);
+</script>
+</body>
+</html>
